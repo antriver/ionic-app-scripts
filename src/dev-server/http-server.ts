@@ -46,6 +46,12 @@ export function createHttpServer(config: ServeConfig): express.Application {
   app.get('/cordova_plugins.js', servePlatformResource);
   app.get('/plugins/*', servePlatformResource);
 
+  // Serve static files from buildDir, and ensure they 404 if not found instead of falling through to the catchall.
+  app.use('/build', express.static(config.buildDir, {fallthrough: false}));
+
+  // Fallback route - send to index.html to allow deeplinker to handle path.
+  app.use(serveIndex);
+
   if (config.useProxy) {
     setupProxies(app);
   }
