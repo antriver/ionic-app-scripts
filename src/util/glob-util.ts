@@ -150,22 +150,22 @@ function toAbsoluteGlob(pattern: string) {
 
 // https://github.com/es128/glob-parent/blob/master/index.js
 function globParent(pattern: string) {
-	// special case for strings ending in enclosure containing path separator
+  // special case for strings ending in enclosure containing path separator
   if (/[\{\[].*[\/]*.*[\}\]]$/.test(pattern)) pattern += '/';
 
-	// preserves full path in case of trailing path separator
+  // preserves full path in case of trailing path separator
   pattern += 'a';
 
-	// remove path parts that are globby
+  // remove path parts that are globby
   do {
     pattern = toUnixPath(dirname(pattern));
   }
 
   while (isGlob(pattern) || /(^|[^\\])([\{\[]|\([^\)]+$)/.test(pattern));
 
-	// remove escape chars and return result
+  // remove escape chars and return result
   return pattern.replace(/\\([\*\?\|\[\]\(\)\{\}])/g, '$1');
-};
+}
 
 // https://github.com/jonschlinkert/is-glob/blob/master/index.js
 function isGlob(pattern: string) {
@@ -183,7 +183,7 @@ function isGlob(pattern: string) {
     pattern = pattern.slice(match.index + match[0].length);
   }
   return false;
-};
+}
 
 // https://github.com/jonschlinkert/is-extglob/blob/master/index.js
 function isExtglob(pattern: string) {
@@ -198,21 +198,21 @@ function isExtglob(pattern: string) {
   }
 
   return false;
-};
+}
 
 export interface GlobObject {
   pattern: string;
   opts: GlobOptions;
   base: string;
-};
+}
 
 export interface GlobResult {
   absolutePath: string;
   base: string;
-};
+}
 
 export interface GlobOptions {
   ignore: string[];
-};
+}
 
 export const DEFAULT_IGNORE_ARRAY = ['**/*.DS_Store'];

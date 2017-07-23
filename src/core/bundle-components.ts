@@ -6,6 +6,7 @@ import * as nodeSass from 'node-sass';
 import * as rollup from 'rollup';
 import * as typescript from 'typescript';
 import * as uglify from 'uglify-js';
+import * as cleanCss from 'clean-css';
 
 
 export function bundleCoreComponents(context: BuildContext) {
@@ -19,14 +20,17 @@ export function bundleCoreComponents(context: BuildContext) {
   const config = {
     srcDir: context.coreDir,
     destDir: context.buildDir,
+    attrCase: 'lower',
     packages: {
+      cleanCss: cleanCss,
       fs: fs,
       path: path,
       nodeSass: nodeSass,
       rollup: rollup,
       typescript: typescript,
       uglify: uglify
-    }
+    },
+    watch: context.isWatch
   };
 
   return compiler.bundle(config).then(results => {
@@ -34,9 +38,22 @@ export function bundleCoreComponents(context: BuildContext) {
       results.errors.forEach((err: string) => {
         Logger.error(`compiler.bundle, results: ${err}`);
       });
+
+    } else if (results.componentRegistry) {
+      // add the component registry to the global window.Ionic
+      context.ionicGlobal = context.ionicGlobal || {};
+      context.ionicGlobal['components'] = results.componentRegistry;
     }
   }).catch(err => {
-    Logger.error(`compiler.bundle: ${err}`);
+    if (err) {
+      if (err.stack) {
+        Logger.error(`compiler.bundle: ${err.stack}`);
+      } else {
+        Logger.error(`compiler.bundle: ${err}`);
+      }
+    } else {
+      Logger.error(`compiler.bundle error`);
+    }
   });
 }
 

@@ -1,5 +1,5 @@
-import { prependIonicGlobal } from './core/ionic-global';
-import { basename, join, isAbsolute, normalize, sep } from 'path';
+import { join, isAbsolute, normalize, sep } from 'path';
+
 import * as rollupBundler from 'rollup';
 
 import { Logger } from './logger/logger';
@@ -90,11 +90,6 @@ export function rollupWorker(context: BuildContext, configFile: string): Promise
         }
 
         const bundleOutput = bundle.generate(rollupConfig);
-
-        const ionicBundle = prependIonicGlobal(context, basename(rollupConfig.dest), bundleOutput.code);
-
-        bundleOutput.code = ionicBundle.code;
-        bundleOutput.map = ionicBundle.map;
 
         // write the bundle
         const promises: Promise<any>[] = [];
@@ -199,14 +194,14 @@ export interface RollupConfig {
   dest?: string;
   cache?: RollupBundle;
   onwarn?: Function;
-};
+}
 
 export interface RollupBundle {
   // https://github.com/rollup/rollup/wiki/JavaScript-API
   write?: Function;
   modules: RollupModule[];
   generate: (config: RollupConfig) => RollupBundleOutput;
-};
+}
 
 export interface RollupBundleOutput {
   code: string;
@@ -216,7 +211,7 @@ export interface RollupBundleOutput {
 
 export interface RollupModule {
   id: string;
-};
+}
 
 export interface RollupWarning {
   code: string;
@@ -224,10 +219,10 @@ export interface RollupWarning {
   url: string;
   pos: number;
   loc: RollupLocationInfo;
-};
+}
 
 export interface RollupLocationInfo {
   file: string;
   line: number;
   column: number;
-};
+}

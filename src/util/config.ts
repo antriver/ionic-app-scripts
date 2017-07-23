@@ -24,7 +24,10 @@ import * as Constants from './constants';
 export function generateContext(context?: BuildContext): BuildContext {
   if (!context) {
     context = {};
-    context.fileCache = new FileCache();
+  }
+
+  if (!context.fileCache) {
+     context.fileCache = new FileCache();
   }
 
   context.isProd = [
@@ -233,6 +236,10 @@ export function generateContext(context?: BuildContext): BuildContext {
   setProcessEnvVar(Constants.ENV_PRINT_WEBPACK_DEPENDENCY_TREE, printWebpackDependencyTree);
   Logger.debug(`printWebpackDependencyTree set to ${printWebpackDependencyTree}`);
 
+  const typeCheckOnLint = getConfigValue(context, '--typeCheckOnLint', null, Constants.ENV_TYPE_CHECK_ON_LINT, Constants.ENV_TYPE_CHECK_ON_LINT.toLowerCase(), null);
+  setProcessEnvVar(Constants.ENV_TYPE_CHECK_ON_LINT, typeCheckOnLint);
+  Logger.debug(`typeCheckOnLint set to ${typeCheckOnLint}`);
+
   const bailOnLintError = getConfigValue(context, '--bailOnLintError', null, Constants.ENV_BAIL_ON_LINT_ERROR, Constants.ENV_BAIL_ON_LINT_ERROR.toLowerCase(), null);
   setProcessEnvVar(Constants.ENV_BAIL_ON_LINT_ERROR, bailOnLintError);
   Logger.debug(`bailOnLintError set to ${bailOnLintError}`);
@@ -252,6 +259,10 @@ export function generateContext(context?: BuildContext): BuildContext {
   const ngModuleFileNameSuffix = getConfigValue(context, '--ngModuleFileNameSuffix', null, Constants.ENV_NG_MODULE_FILE_NAME_SUFFIX, Constants.ENV_NG_MODULE_FILE_NAME_SUFFIX.toLowerCase(), '.module.ts');
   setProcessEnvVar(Constants.ENV_NG_MODULE_FILE_NAME_SUFFIX, ngModuleFileNameSuffix);
   Logger.debug(`ngModuleFileNameSuffix set to ${ngModuleFileNameSuffix}`);
+
+  const polyfillName = getConfigValue(context, '--polyfillFileName', null, Constants.ENV_POLYFILL_FILE_NAME, Constants.ENV_POLYFILL_FILE_NAME.toLowerCase(), 'polyfills.js');
+  setProcessEnvVar(Constants.ENV_POLYFILL_FILE_NAME, polyfillName);
+  Logger.debug(`polyfillName set to ${polyfillName}`);
 
   /* Provider Path Stuff */
   setProcessEnvVar(Constants.ENV_ACTION_SHEET_CONTROLLER_CLASSNAME, 'ActionSheetController');
@@ -292,6 +303,10 @@ export function generateContext(context?: BuildContext): BuildContext {
   setProcessEnvVar(Constants.ENV_POPOVER_COMPONENT_PATH, join(context.ionicAngularDir, 'components', 'popover', 'popover-component.js'));
   setProcessEnvVar(Constants.ENV_POPOVER_COMPONENT_FACTORY_PATH, join(context.ionicAngularDir, 'components', 'popover', 'popover-component.ngfactory.js'));
 
+  setProcessEnvVar(Constants.ENV_SELECT_POPOVER_CLASSNAME, 'SelectPopover');
+  setProcessEnvVar(Constants.ENV_SELECT_POPOVER_COMPONENT_PATH, join(context.ionicAngularDir, 'components', 'select', 'select-popover-component.js'));
+  setProcessEnvVar(Constants.ENV_SELECT_POPOVER_COMPONENT_FACTORY_PATH, join(context.ionicAngularDir, 'components', 'select', 'select-popover-component.ngfactory.js'));
+
   setProcessEnvVar(Constants.ENV_TOAST_CONTROLLER_CLASSNAME, 'ToastController');
   setProcessEnvVar(Constants.ENV_TOAST_CONTROLLER_PATH, join(context.ionicAngularDir, 'components', 'toast', 'toast-controller.js'));
   setProcessEnvVar(Constants.ENV_TOAST_VIEW_CONTROLLER_PATH, join(context.ionicAngularDir, 'components', 'toast', 'toast.js'));
@@ -306,12 +321,11 @@ export function generateContext(context?: BuildContext): BuildContext {
   setProcessEnvVar(Constants.ENV_PURGE_DECORATORS, purgeDecorators);
   Logger.debug(`purgeDecorators set to ${purgeDecorators}`);
 
+  const manualTreeshaking = getConfigValue(context, '--manualTreeshaking', null, Constants.ENV_MANUAL_TREESHAKING, Constants.ENV_MANUAL_TREESHAKING.toLowerCase(), 'true');
+  setProcessEnvVar(Constants.ENV_MANUAL_TREESHAKING, manualTreeshaking);
+  Logger.debug(`manualTreeshaking set to ${manualTreeshaking}`);
+
   /* Experimental Flags */
-
-  const experimentalManualTreeshaking = getConfigValue(context, '--experimentalManualTreeshaking', null, Constants.ENV_EXPERIMENTAL_MANUAL_TREESHAKING, Constants.ENV_EXPERIMENTAL_MANUAL_TREESHAKING.toLowerCase(), null);
-  setProcessEnvVar(Constants.ENV_EXPERIMENTAL_MANUAL_TREESHAKING, experimentalManualTreeshaking);
-  Logger.debug(`experimentalManualTreeshaking set to ${experimentalManualTreeshaking}`);
-
   const useExperimentalClosure = getConfigValue(context, '--useExperimentalClosure', null, Constants.ENV_USE_EXPERIMENTAL_CLOSURE, Constants.ENV_USE_EXPERIMENTAL_CLOSURE.toLowerCase(), null);
   setProcessEnvVar(Constants.ENV_USE_EXPERIMENTAL_CLOSURE, useExperimentalClosure);
   Logger.debug(`useExperimentalClosure set to ${useExperimentalClosure}`);

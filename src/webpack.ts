@@ -1,4 +1,3 @@
-import { prependIonicGlobal } from './core/ionic-global';
 import { EventEmitter } from 'events';
 import { dirname, join } from 'path';
 
@@ -96,43 +95,29 @@ function webpackBuildComplete(stats: any, context: BuildContext, webpackConfig: 
 
   // set the module files used in this bundle
   // this reference can be used elsewhere in the build (sass)
-  const files: string[] = stats.compilation.modules.map((webpackObj: any) => {
-    if (webpackObj.resource) {
-      return webpackObj.resource;
-    } else {
-      return webpackObj.context;
-    }
-  }).filter((path: string) => {
-    // just make sure the path is not null
-    return path && path.length > 0;
-  });
+  if (!context.isProd || !context.optimizeJs) {
+    const files: string[] = stats.compilation.modules.map((webpackObj: any) => {
+      if (webpackObj.resource) {
+        return webpackObj.resource;
+      } else {
+        return webpackObj.context;
+      }
+    }).filter((path: string) => {
+      // just make sure the path is not null
+      return path && path.length > 0;
+    });
 
-  context.moduleFiles = files;
-
-  return writeBundleFilesToDisk(context);
-}
-
-export function writeBundleFilesToDisk(context: BuildContext) {
-  const mainJsPath = join(context.buildDir, context.outputJsFileName);
-  const mainJsMapPath = join(context.buildDir, context.outputJsFileName + '.map');
-
-  const mainJsFile = context.fileCache.get(mainJsPath);
-  const mainJsMapFile = context.fileCache.get(mainJsMapPath);
-  if (mainJsFile) {
-    const ionicBundle = prependIonicGlobal(context, context.outputJsFileName, mainJsFile.content);
-
-    mainJsFile.content = ionicBundle.code;
-    if (mainJsMapFile && ionicBundle.map) {
-      mainJsMapFile.content = ionicBundle.map.toString();
-    }
+    context.moduleFiles = files;
   }
 
+  return setBundledFiles(context);
+}
+
+export function setBundledFiles(context: BuildContext) {
   const bundledFilesToWrite = context.fileCache.getAll().filter(file => {
-    return dirname(file.path) === context.buildDir && (file.path.endsWith('.js') || file.path.endsWith('.js.map'));
+    return dirname(file.path).indexOf(context.buildDir) >= 0 && (file.path.endsWith('.js') || file.path.endsWith('.js.map'));
   });
   context.bundledFilePaths = bundledFilesToWrite.map(bundledFile => bundledFile.path);
-  const promises = bundledFilesToWrite.map(bundledFileToWrite => writeFileAsync(bundledFileToWrite.path, bundledFileToWrite.content));
-  return Promise.all(promises);
 }
 
 export function runWebpackFullBuild(config: WebpackConfig) {
@@ -140,18 +125,15 @@ export function runWebpackFullBuild(config: WebpackConfig) {
     const callback = (err: Error, stats: any) => {
       if (err) {
         reject(new BuildError(err));
-      }
-      else {
+      } else {
         const info = stats.toJson();
 
         if (stats.hasErrors()) {
           reject(new BuildError(info.errors));
-        }
-        else if (stats.hasWarnings()) {
-          Logger.debug(info.warnings)
+        } else if (stats.hasWarnings()) {
+          Logger.debug(info.warnings);
           resolve(stats);
-        }
-        else {
+        } else {
           resolve(stats);
         }
       }

@@ -1,4 +1,4 @@
-import { basename, extname } from 'path';
+import { basename, dirname, extname, join } from 'path';
 
 import * as MagicString from 'magic-string';
 
@@ -6,11 +6,19 @@ import { Logger } from './logger/logger';
 import { fillConfigDefaults, getUserConfigFile, replacePathVars } from './util/config';
 import * as Constants from './util/constants';
 import { BuildError } from './util/errors';
-import { getBooleanPropertyValue, getStringPropertyValue, webpackStatsToDependencyMap, printDependencyMap } from './util/helpers';
+import { changeExtension, getBooleanPropertyValue, getStringPropertyValue, webpackStatsToDependencyMap, printDependencyMap } from './util/helpers';
 import { BuildContext, TaskInfo } from './util/interfaces';
 import { runWebpackFullBuild, WebpackConfig } from './webpack';
 import { addPureAnnotation, purgeStaticCtorFields, purgeStaticFieldDecorators, purgeTranspiledDecorators } from './optimization/decorators';
-import { getAppModuleNgFactoryPath, calculateUnusedComponents, purgeUnusedImportsAndExportsFromIndex, purgeComponentNgFactoryImportAndUsage, purgeProviderControllerImportAndUsage, purgeProviderClassNameFromIonicModuleForRoot } from './optimization/treeshake';
+import { calculateUnusedComponents,
+        checkIfProviderIsUsedInSrc,
+        getIonicModuleFilePath,
+        purgeUnusedImportsAndExportsFromModuleFile,
+        purgeUnusedExportsFromIndexFile,
+        purgeComponentNgFactoryImportAndUsage,
+        purgeProviderControllerImportAndUsage,
+        purgeProviderClassNameFromIonicModuleForRoot
+} from './optimization/treeshake';
 
 export function optimization(context: BuildContext, configFile: string) {
   const logger = new Logger(`optimization`);
@@ -52,15 +60,24 @@ export function purgeGeneratedFiles(context: BuildContext, fileNameSuffix: strin
 
 export function doOptimizations(context: BuildContext, dependencyMap: Map<string, Set<string>>) {
   // remove decorators
-  const modifiedMap = new Map(dependencyMap);
+  let modifiedMap = new Map(dependencyMap);
   if (getBooleanPropertyValue(Constants.ENV_PURGE_DECORATORS)) {
     removeDecorators(context);
   }
 
   // remove unused component imports
-  if (getBooleanPropertyValue(Constants.ENV_EXPERIMENTAL_MANUAL_TREESHAKING)) {
-    const results = calculateUnusedComponents(modifiedMap);
-    purgeUnusedImports(context, results.purgedModules);
+  if (getBooleanPropertyValue(Constants.ENV_MANUAL_TREESHAKING)) {
+    // TODO remove this in a couple versions
+    // only run manual tree shaking if the module file is found
+    // since there is a breaking change here
+    const ionicModulePath = getIonicModuleFilePath();
+    if (context.fileCache.get(ionicModulePath)) {
+      // due to how the angular compiler works in angular 4, we need to check if
+      modifiedMap = checkIfProviderIsUsedInSrc(context, modifiedMap);
+      const results = calculateUnusedComponents(modifiedMap);
+      purgeUnusedImports(context, results.purgedModules);
+      updateIonicComponentsUsed(context, dependencyMap, results.purgedModules);
+    }
   }
 
   if (getBooleanPropertyValue(Constants.ENV_PRINT_MODIFIED_DEPENDENCY_TREE)) {
@@ -72,9 +89,19 @@ export function doOptimizations(context: BuildContext, dependencyMap: Map<string
   return modifiedMap;
 }
 
+function updateIonicComponentsUsed(context: BuildContext, originalDependencyMap: Map<string, Set<string>>, purgedModules: Map<string, Set<string>>) {
+  const includedModuleSet = new Set<string>();
+  originalDependencyMap.forEach((set: Set<string>, modulePath: string) => {
+    if (!purgedModules.has(modulePath)) {
+      includedModuleSet.add(modulePath);
+    }
+  });
+  context.moduleFiles = Array.from(includedModuleSet);
+}
+
 function optimizationEnabled() {
   const purgeDecorators = getBooleanPropertyValue(Constants.ENV_PURGE_DECORATORS);
-  const manualTreeshaking = getBooleanPropertyValue(Constants.ENV_EXPERIMENTAL_MANUAL_TREESHAKING);
+  const manualTreeshaking = getBooleanPropertyValue(Constants.ENV_MANUAL_TREESHAKING);
   return purgeDecorators || manualTreeshaking;
 }
 
@@ -99,50 +126,69 @@ function removeDecorators(context: BuildContext) {
 
 function purgeUnusedImports(context: BuildContext, purgeDependencyMap: Map<string, Set<string>>) {
   // for now, restrict this to components in the ionic-angular/index.js file
-  const indexFilePath = process.env[Constants.ENV_VAR_IONIC_ANGULAR_ENTRY_POINT];
+  const indexFilePath = getStringPropertyValue(Constants.ENV_VAR_IONIC_ANGULAR_ENTRY_POINT);
+  const moduleFilePath = getIonicModuleFilePath();
   const file = context.fileCache.get(indexFilePath);
   if (!file) {
     throw new Error(`Could not find ionic-angular index file ${indexFilePath}`);
+  }
+  const moduleFile = context.fileCache.get(moduleFilePath);
+  if (!moduleFile) {
+    throw new Error(`Could not find ionic-angular module file ${moduleFilePath}`);
   }
   const modulesToPurge: string[] = [];
   purgeDependencyMap.forEach((set: Set<string>, moduleToPurge: string) => {
     modulesToPurge.push(moduleToPurge);
   });
 
-  const updatedFileContent = purgeUnusedImportsAndExportsFromIndex(indexFilePath, file.content, modulesToPurge);
-  context.fileCache.set(indexFilePath, { path: indexFilePath, content: updatedFileContent });
+  const updatedFileContent = purgeUnusedImportsAndExportsFromModuleFile(moduleFilePath, moduleFile.content, modulesToPurge);
+  context.fileCache.set(moduleFilePath, { path: moduleFilePath, content: updatedFileContent });
 
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_ACTION_SHEET_CONTROLLER_PATH], process.env[Constants.ENV_ACTION_SHEET_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_ACTION_SHEET_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_ACTION_SHEET_CONTROLLER_CLASSNAME]);
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_ALERT_CONTROLLER_PATH], process.env[Constants.ENV_ALERT_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_ALERT_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_ALERT_CONTROLLER_CLASSNAME]);
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_LOADING_CONTROLLER_PATH], process.env[Constants.ENV_LOADING_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_LOADING_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_LOADING_CONTROLLER_CLASSNAME]);
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_MODAL_CONTROLLER_PATH], process.env[Constants.ENV_MODAL_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_MODAL_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_MODAL_CONTROLLER_CLASSNAME]);
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_PICKER_CONTROLLER_PATH], process.env[Constants.ENV_PICKER_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_PICKER_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_PICKER_CONTROLLER_CLASSNAME]);
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_POPOVER_CONTROLLER_PATH], process.env[Constants.ENV_POPOVER_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_POPOVER_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_POPOVER_CONTROLLER_CLASSNAME]);
-  attemptToPurgeUnusedProvider(context, purgeDependencyMap, process.env[Constants.ENV_TOAST_CONTROLLER_PATH], process.env[Constants.ENV_TOAST_VIEW_CONTROLLER_PATH], process.env[Constants.ENV_TOAST_COMPONENT_FACTORY_PATH], process.env[Constants.ENV_TOAST_CONTROLLER_CLASSNAME]);
+  const updatedIndexContent = purgeUnusedExportsFromIndexFile(file.path, file.content, modulesToPurge);
+  context.fileCache.set(file.path, { path: file.path, content: updatedIndexContent });
+
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_ACTION_SHEET_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_ACTION_SHEET_CONTROLLER_CLASSNAME));
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_ALERT_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_ALERT_CONTROLLER_CLASSNAME));
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_LOADING_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_LOADING_CONTROLLER_CLASSNAME));
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_MODAL_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_MODAL_CONTROLLER_CLASSNAME));
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_PICKER_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_PICKER_CONTROLLER_CLASSNAME));
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_POPOVER_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_POPOVER_CONTROLLER_CLASSNAME));
+  attemptToPurgeUnusedProvider(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_TOAST_CONTROLLER_PATH), getStringPropertyValue(Constants.ENV_TOAST_CONTROLLER_CLASSNAME));
+
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_ACTION_SHEET_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_ACTION_SHEET_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_ALERT_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_ALERT_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_LOADING_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_LOADING_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_MODAL_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_MODAL_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_PICKER_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_PICKER_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_POPOVER_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_POPOVER_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_TOAST_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_TOAST_COMPONENT_FACTORY_PATH));
+  attemptToPurgeUnusedEntryComponents(context, purgeDependencyMap, getStringPropertyValue(Constants.ENV_SELECT_POPOVER_COMPONENT_PATH), getStringPropertyValue(Constants.ENV_SELECT_POPOVER_COMPONENT_FACTORY_PATH));
 }
 
-function attemptToPurgeUnusedProvider(context: BuildContext, dependencyMap: Map<string, Set<string>>, providerPath: string, providerComponentPath: string, providerComponentFactoryPath: string, providerClassName: string) {
+function attemptToPurgeUnusedProvider(context: BuildContext, dependencyMap: Map<string, Set<string>>, providerPath: string, providerClassName: string) {
   if (dependencyMap.has(providerPath)) {
-    // awwww yissssssss
+    const ngModuleFactoryFiles = context.fileCache.getAll().filter(file => file.path.endsWith(changeExtension(getStringPropertyValue(Constants.ENV_NG_MODULE_FILE_NAME_SUFFIX), '.ngfactory.js')));
+    ngModuleFactoryFiles.forEach(ngModuleFactoryFile => {
+      const newContent = purgeProviderControllerImportAndUsage(ngModuleFactoryFile.path, ngModuleFactoryFile.content, providerPath);
+      context.fileCache.set(ngModuleFactoryFile.path, { path: ngModuleFactoryFile.path, content: newContent});
+    });
 
-    // first, get the content of the app module ngfactory file
-    const appModuleNgFactoryPath = getAppModuleNgFactoryPath();
-    const file = context.fileCache.get(appModuleNgFactoryPath);
-    if (!file) {
-      return;
-    }
+    const moduleFilePath = getIonicModuleFilePath();
+    const ionicModuleFile = context.fileCache.get(moduleFilePath);
+    const newModuleFileContent = purgeProviderClassNameFromIonicModuleForRoot(ionicModuleFile.content, providerClassName);
 
-    let updatedContent = purgeComponentNgFactoryImportAndUsage(file.path, file.content, providerComponentFactoryPath);
-    updatedContent = purgeProviderControllerImportAndUsage(file.path, updatedContent, providerPath);
-    context.fileCache.set(appModuleNgFactoryPath, { path: appModuleNgFactoryPath, content: updatedContent});
+    // purge the component from the module file
+    context.fileCache.set(moduleFilePath, { path: moduleFilePath, content: newModuleFileContent});
+  }
+}
 
-    // purge the provider name from the forRoot method providers list
-    const indexFilePath = process.env[Constants.ENV_VAR_IONIC_ANGULAR_ENTRY_POINT];
-    const ionicIndexFile = context.fileCache.get(indexFilePath);
-    let newIndexFileContent = purgeProviderClassNameFromIonicModuleForRoot(ionicIndexFile.content, providerClassName);
-
-    // purge the component from the index file
-    context.fileCache.set(indexFilePath, { path: indexFilePath, content: newIndexFileContent});
+function attemptToPurgeUnusedEntryComponents(context: BuildContext, dependencyMap: Map<string, Set<string>>, entryComponentPath: string, entryComponentFactoryPath: string) {
+  if (dependencyMap.has(entryComponentPath)) {
+    const ngModuleFactoryFiles = context.fileCache.getAll().filter(file => file.path.endsWith(changeExtension(getStringPropertyValue(Constants.ENV_NG_MODULE_FILE_NAME_SUFFIX), '.ngfactory.js')));
+    ngModuleFactoryFiles.forEach(ngModuleFactoryFile => {
+      const updatedContent = purgeComponentNgFactoryImportAndUsage(ngModuleFactoryFile.path, ngModuleFactoryFile.content, entryComponentFactoryPath);
+      context.fileCache.set(ngModuleFactoryFile.path, { path: ngModuleFactoryFile.path, content: updatedContent});
+    });
   }
 }
 
@@ -158,10 +204,8 @@ export function getConfig(context: BuildContext, configFile: string): WebpackCon
 
 const taskInfo: TaskInfo = {
   fullArg: '--optimization',
-  shortArg: '-dt',
-  envVar: 'IONIC_DEPENDENCY_TREE',
-  packageConfig: 'ionic_dependency_tree',
+  shortArg: '-op',
+  envVar: 'IONIC_OPTIMIZATION',
+  packageConfig: 'ionic_optimization',
   defaultConfigFile: 'optimization.config'
 };
-
-

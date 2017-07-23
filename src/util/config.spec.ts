@@ -109,11 +109,13 @@ describe('config', () => {
       expect(fakeConfig[Constants.ENV_PRINT_ORIGINAL_DEPENDENCY_TREE]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_PRINT_MODIFIED_DEPENDENCY_TREE]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_PRINT_WEBPACK_DEPENDENCY_TREE]).toBeFalsy();
+      expect(fakeConfig[Constants.ENV_TYPE_CHECK_ON_LINT]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_BAIL_ON_LINT_ERROR]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_ENABLE_LINT]).toEqual('true');
       expect(fakeConfig[Constants.ENV_DISABLE_LOGGING]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_START_WATCH_TIMEOUT]).toEqual('3000');
       expect(fakeConfig[Constants.ENV_NG_MODULE_FILE_NAME_SUFFIX]).toEqual('.module.ts');
+      expect(fakeConfig[Constants.ENV_POLYFILL_FILE_NAME]).toEqual('polyfills.js');
 
       expect(fakeConfig[Constants.ENV_ACTION_SHEET_CONTROLLER_CLASSNAME]).toEqual('ActionSheetController');
       expect(fakeConfig[Constants.ENV_ACTION_SHEET_CONTROLLER_PATH]).toEqual(join(context.ionicAngularDir, 'components', 'action-sheet', 'action-sheet-controller.js'));
@@ -161,8 +163,8 @@ describe('config', () => {
 
       expect(fakeConfig[Constants.ENV_PARSE_DEEPLINKS]).toBeTruthy();
       expect(fakeConfig[Constants.ENV_PURGE_DECORATORS]).toBeTruthy();
+      expect(fakeConfig[Constants.ENV_MANUAL_TREESHAKING]).toBeTruthy();
 
-      expect(fakeConfig[Constants.ENV_EXPERIMENTAL_MANUAL_TREESHAKING]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_USE_EXPERIMENTAL_CLOSURE]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_USE_EXPERIMENTAL_BABILI]).toBeFalsy();
       expect(fakeConfig[Constants.ENV_BUILD_TO_ES5]).toEqual('true');

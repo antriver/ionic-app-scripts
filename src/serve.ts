@@ -45,7 +45,8 @@ export function serve(context: BuildContext) {
         notificationPort: notificationPortFound,
         useServerLogs: useServerLogs(context),
         useProxy: useProxy(context),
-        notifyOnConsoleLog: sendClientConsoleLogs(context)
+        notifyOnConsoleLog: sendClientConsoleLogs(context),
+        devapp: false
       };
 
       createNotificationServer(config);
@@ -65,6 +66,7 @@ export function serve(context: BuildContext) {
         throw err;
       } else {
         onReady(config, context);
+        return config;
       }
     });
 }
